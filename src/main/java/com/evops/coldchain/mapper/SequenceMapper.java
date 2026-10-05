@@ -54,4 +54,7 @@ public interface SequenceMapper {
 
     @Select("SELECT NEXT VALUE FOR seq_cc_reschedule_no")
     Long nextRescheduleNo();
+
+    @Select("SELECT NEXT VALUE FOR seq_cc_return_no")
+    Long nextReturnNo();
 }

@@ -238,6 +238,36 @@ public class ShiroConfig {
         chain.addPathDefinition("/api/cold-chain/reschedules/**",
                 "authcBasic, perms[" + com.evops.coldchain.CcConstants.PERM_WINDOW_VIEW + "]");
 
+        // —— V11 冷链药品退货（写路径在前、宽泛只读在后）——
+        // 导出：退货批次列表 / 单批证据链（独立导出权限，逐次写审计流水）
+        chain.addPathDefinition("/api/cold-chain/returns/export",
+                "authcBasic, perms[" + com.evops.coldchain.CcConstants.PERM_RETURN_EXPORT + "]");
+        chain.addPathDefinition("/api/cold-chain/returns/*/evidence",
+                "authcBasic, perms[" + com.evops.coldchain.CcConstants.PERM_RETURN_EXPORT + "]");
+        // 质量检验（QA）
+        chain.addPathDefinition("/api/cold-chain/returns/*/inspect",
+                "authcBasic, perms[" + com.evops.coldchain.CcConstants.PERM_RETURN_INSPECT + "]");
+        // 提出处理决定（放行/销毁/转待查）
+        chain.addPathDefinition("/api/cold-chain/returns/*/decisions",
+                "authcBasic, perms[" + com.evops.coldchain.CcConstants.PERM_RETURN_DECIDE + "]");
+        // 双人复核（第二账号）
+        chain.addPathDefinition("/api/cold-chain/returns/decisions/*/review",
+                "authcBasic, perms[" + com.evops.coldchain.CcConstants.PERM_RETURN_REVIEW + "]");
+        // 入隔离库位 / 隔离区内移动
+        chain.addPathDefinition("/api/cold-chain/returns/*/isolate",
+                "authcBasic, perms[" + com.evops.coldchain.CcConstants.PERM_RETURN_HANDLE + "]");
+        chain.addPathDefinition("/api/cold-chain/returns/*/move",
+                "authcBasic, perms[" + com.evops.coldchain.CcConstants.PERM_RETURN_HANDLE + "]");
+        // 登记（POST）与列表（GET）同路径：先过查看权限，登记在服务内二次校验办理权限
+        chain.addPathDefinition("/api/cold-chain/returns",
+                "authcBasic, perms[" + com.evops.coldchain.CcConstants.PERM_RETURN_VIEW + "]");
+        // 详情 / 按原批次查询只读
+        chain.addPathDefinition("/api/cold-chain/returns/**",
+                "authcBasic, perms[" + com.evops.coldchain.CcConstants.PERM_RETURN_VIEW + "]");
+        // 退货批次隔离处理页面（页面内各操作再经上面 API 权限点二次校验）
+        chain.addPathDefinition("/ui/cold-chain/returns",
+                "authcBasic, perms[" + com.evops.coldchain.CcConstants.PERM_RETURN_VIEW + "]");
+
         // 冷链台账接口与管理页面使用 HTTP Basic，便于 curl/联调；浏览器会弹出登录框
         chain.addPathDefinition("/api/**", "authcBasic");
         chain.addPathDefinition("/ui/**", "authcBasic");

@@ -448,4 +448,75 @@ public final class CcConstants {
     public static final String PERM_CARRIER_NOTIFY_RETRY = "coldchain:carrier:notify:retry";
     /** 改期待办确认 */
     public static final String PERM_RESCHEDULE_TODO = "coldchain:reschedule:todo";
+
+    // —— V11 冷链药品退货 ——
+    /** 退货原因：收货拒签（对应运输异常 REJECTION） */
+    public static final String RETURN_REASON_REJECTION = "REJECTION";
+    /** 退货原因：温度超限（对应运输异常 TEMP_EXCURSION） */
+    public static final String RETURN_REASON_TEMP = "TEMP_EXCURSION";
+    /** 退货原因：包装破损（对应运输异常 DAMAGE） */
+    public static final String RETURN_REASON_DAMAGE = "PACKAGE_DAMAGE";
+
+    /** 退货批次状态：REGISTERED 已登记（未入隔离） */
+    public static final String RETURN_REGISTERED = "REGISTERED";
+    /** 已入隔离库位（不能再次出库，待质量检验） */
+    public static final String RETURN_ISOLATED = "ISOLATED";
+    /** 质量检验完成（可提出处理决定） */
+    public static final String RETURN_INSPECTED = "INSPECTED";
+    /** 处理决定待复核（双人复核中，库位冻结） */
+    public static final String RETURN_DECISION_PENDING = "DECISION_PENDING";
+    /** 已放行（终态，双人复核通过后出隔离区） */
+    public static final String RETURN_RELEASED = "RELEASED";
+    /** 已销毁（终态） */
+    public static final String RETURN_DESTROYED = "DESTROYED";
+    /** 转待查（留在隔离区，可重新检验后再决定） */
+    public static final String RETURN_PENDING_REVIEW = "PENDING_REVIEW";
+
+    /** 移动类型：ISOLATE_IN 入隔离 / MOVE 隔离区内移动 / RELEASE_OUT 放行出库 / DESTROY_OUT 销毁出库 */
+    public static final String MOVE_ISOLATE_IN = "ISOLATE_IN";
+    public static final String MOVE_MOVE = "MOVE";
+    public static final String MOVE_RELEASE_OUT = "RELEASE_OUT";
+    public static final String MOVE_DESTROY_OUT = "DESTROY_OUT";
+
+    /** 检验结论：PASS 合格 / FAIL 不合格 */
+    public static final String INSPECT_RESULT_PASS = "PASS";
+    public static final String INSPECT_RESULT_FAIL = "FAIL";
+
+    /** 处理决定类型：RELEASE 放行 / DESTROY 销毁 / PENDING_REVIEW 转待查 */
+    public static final String DECISION_RELEASE = "RELEASE";
+    public static final String DECISION_DESTROY = "DESTROY";
+    public static final String DECISION_PENDING_REVIEW = "PENDING_REVIEW";
+    /** 决定复核状态：PENDING 待复核 / CONFIRMED 双人复核通过 / REJECTED 复核驳回 */
+    public static final String DECISION_ST_PENDING = "PENDING";
+    public static final String DECISION_ST_CONFIRMED = "CONFIRMED";
+    public static final String DECISION_ST_REJECTED = "REJECTED";
+
+    // V11 操作日志实体类型
+    public static final String ENT_RETURN = "RETURN";
+    public static final String ENT_RETURN_MOVEMENT = "RETURN_MOVEMENT";
+    public static final String ENT_RETURN_INSPECTION = "RETURN_INSPECTION";
+    public static final String ENT_RETURN_DECISION = "RETURN_DECISION";
+
+    // V11 操作动作
+    public static final String ACT_RETURN_REGISTER = "RETURN_REGISTER";
+    public static final String ACT_RETURN_ISOLATE = "RETURN_ISOLATE";
+    public static final String ACT_RETURN_MOVE = "RETURN_MOVE";
+    public static final String ACT_RETURN_INSPECT = "RETURN_INSPECT";
+    public static final String ACT_RETURN_DECIDE = "RETURN_DECIDE";
+    public static final String ACT_RETURN_REVIEW = "RETURN_REVIEW";
+    public static final String ACT_RETURN_EXPORT = "RETURN_EXPORT";
+
+    // —— V11 Shiro 权限点 ——
+    /** 退货办理：登记/入隔离/隔离区内库位移动 */
+    public static final String PERM_RETURN_HANDLE = "coldchain:return:handle";
+    /** 退货质量检验（质量人员） */
+    public static final String PERM_RETURN_INSPECT = "coldchain:return:inspect";
+    /** 提出退货处理决定（放行/销毁/转待查） */
+    public static final String PERM_RETURN_DECIDE = "coldchain:return:decide";
+    /** 退货处理决定复核（第二人，必须与提出人不同账号） */
+    public static final String PERM_RETURN_REVIEW = "coldchain:return:review";
+    /** 退货台账查看（页面/列表/详情） */
+    public static final String PERM_RETURN_VIEW = "coldchain:return:view";
+    /** 退货台账与证据链导出 */
+    public static final String PERM_RETURN_EXPORT = "coldchain:return:export";
 }

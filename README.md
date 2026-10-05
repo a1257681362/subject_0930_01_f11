@@ -933,3 +933,106 @@ Mapper/服务直查物理表）覆盖：工作日区间版本化（草稿重叠�
 快照与责任人、承运通知对象、调度/承运/收货待办责任人逐一列出；webhook 失败留痕不回滚、
 重试 attemptNo 递增；待办确认只进不退；签收=送达时窗完成后禁止改期；台账聚合改期历史）；
 权限（401/403/200：时窗维护、装车、改期申请、改期审批分级授权）。全套 51 个用例通过。
+
+## 冷链运输 V11：冷链药品退货
+
+在 V1~V10 台账上新增"冷链药品退货"：收货拒签、温度超限和包装破损分别生成退货原因；
+退货批次进入隔离库位后不能再次出库；质量人员完成检验才能选择放行、销毁或转待查；
+每次移动记录库位、人员和时间；原销售批次保持只读关联；处理决定需要双人复核并可导出
+证据链；冷链药品运输对象置为无效后，"退货批次隔离处理"页面、导出和后台严格同口径。
+
+### 核心规则
+
+- **三类退货原因**：`REJECTION` 收货拒签 / `TEMP_EXCURSION` 温度超限 / `PACKAGE_DAMAGE`
+  包装破损。登记时可关联对应类型的运输异常（REJECTION/TEMP_EXCURSION/DAMAGE，类型必须
+  匹配且属于同一原批次），原因明细必填，退货数量不得超过原批次发运数量。
+- **登记即固化快照、原销售批次只读关联**：登记当刻把原批次号、药品名称、批准文号、
+  储存温区、包装规格逐字段快照到 `t_cc_return_batch`；退货全流程绝不回写原运输批次
+  任何字段——原批次此后被撤回置为无效，退货台账仍按快照展示。
+- **隔离状态机**：`REGISTERED` 已登记 → `ISOLATED` 已入隔离 → `INSPECTED` 已检验 →
+  `DECISION_PENDING` 决定待复核 → `RELEASED` 已放行 / `DESTROYED` 已销毁（终态），
+  或 `PENDING_REVIEW` 转待查（留在隔离区，须重新检验后才能再决定）。
+- **进入隔离库位后不能再次出库**：隔离库位约定以 `ISO` 开头；库位移动只允许在隔离区内
+  （目标库位仍须为隔离库位），决定待复核期间库位冻结；唯一的出库路径是双人复核通过的
+  放行/销毁决定——确认时系统自动生成 `RELEASE_OUT`/`DESTROY_OUT` 出库移动。
+- **每次移动记录库位、人员和时间**：`t_cc_return_movement` 只追加，记录源库位、目标
+  库位、操作人（ID+账号）与移动时间；入隔离、隔离区内移动、放行/销毁出库逐行留痕。
+- **质量检验门控**：仅 QA 岗可检验（`ISOLATED`/`PENDING_REVIEW` 状态）；检验记录
+  只追加，完成检验（`INSPECTED`）后才能提出放行/销毁/转待查决定。
+- **处理决定双人复核**：提出人登记决定（`PENDING`），必须由**不同于提出人的第二个
+  登录账号**复核确认才生效；驳回退回已检验状态可重新提出，历史决定（含被驳回）
+  原样保留。放行/销毁须给出隔离区外目标库位（合格品库位/销毁区），转待查留在隔离区。
+- **证据链导出**：`GET /returns/{id}/evidence` 一单到底导出登记快照、移动留痕、检验
+  记录、处理决定（双人复核）与操作日志（CSV，UTF-8 BOM）；列表导出
+  `GET /returns/export` 与隔离处理页面、后台列表接口读**同一视图查询**——运输对象
+  置为无效后三者同口径（快照不变、原批次状态一致展示"已作废（无效）"）。导出逐次写
+  审计流水。
+- 登记/入隔离/移动/检验/决定/复核/导出均写 `t_cc_op_log`（实体类型 `RETURN*`），
+  原批次台账 `/batches/{id}/ledger` 聚合 `returns` 只读关联块。
+
+### 表结构增量（详见 schema.sql，版本标记 `cold-chain-11`）
+
+- 新增 `t_cc_return_batch`（退货批次主表，原批次只读关联+登记快照）、
+  `t_cc_return_movement`（移动留痕，只追加）、`t_cc_return_inspection`（质量检验，
+  只追加）、`t_cc_return_decision`（处理决定，双人复核）；序列 `seq_cc_return_no`
+  （退货单号 `TH+8位`）。
+
+### 接口增量（仍在 `/api/cold-chain` 下，HTTP Basic）
+
+| 动作 | 方法与路径 | 权限 |
+| --- | --- | --- |
+| 退货登记（三类原因，快照固化） | `POST /returns` | `coldchain:return:handle`（服务内二次校验） |
+| 入隔离库位 | `POST /returns/{id}/isolate` | `coldchain:return:handle` |
+| 隔离区内库位移动 | `POST /returns/{id}/move` | `coldchain:return:handle` |
+| 质量检验（QA） | `POST /returns/{id}/inspect` | `coldchain:return:inspect` |
+| 提出处理决定（放行/销毁/转待查） | `POST /returns/{id}/decisions` | `coldchain:return:decide` |
+| 双人复核（第二账号通过/驳回） | `POST /returns/decisions/{decisionId}/review` | `coldchain:return:review` |
+| 退货列表 / 详情 / 按原批次查询 | `GET /returns`、`GET /returns/{id}`、`GET /returns/by-batch/{batchId}` | `coldchain:return:view` |
+| 列表 CSV 导出（与页面/后台同口径） | `GET /returns/export` | `coldchain:return:export` |
+| 证据链 CSV 导出 | `GET /returns/{id}/evidence` | `coldchain:return:export` |
+| 退货批次隔离处理页面 | `GET /ui/cold-chain/returns` | `coldchain:return:view` |
+
+权限分配：调度/收货岗可登记退货与办理入隔离、库内移动；QA 岗检验、提出决定、复核与
+导出；管理员可复核（双人复核第二人）与导出。示例（拒签退货 → 隔离 → 检验 → 双人复核放行）：
+
+```bash
+# 收货拒签产生 REJECTION 异常后，收货岗登记退货（关联该异常）
+curl -u receiver:receiver123 -H 'Content-Type: application/json' -X POST \
+  http://localhost:8080/api/cold-chain/returns -d \
+  '{"sourceBatchId":1,"reasonType":"REJECTION","reasonDetail":"收货方验收拒签，整批退回",
+    "exceptionId":101,"returnQty":20}'
+
+# 调度办理入隔离库位（此后不能再次出库）
+curl -u dispatcher:dispatcher123 -H 'Content-Type: application/json' -X POST \
+  http://localhost:8080/api/cold-chain/returns/1/isolate -d \
+  '{"isolationLocation":"ISO-A-01","note":"退货收货区清点完毕"}'
+
+# QA 完成质量检验
+curl -u qa:qa123 -H 'Content-Type: application/json' -X POST \
+  http://localhost:8080/api/cold-chain/returns/1/inspect -d \
+  '{"inspectResult":"PASS","inspectNote":"温度曲线复核，偏差可接受，检验合格"}'
+
+# QA 提出放行决定 -> 第二账号（admin）复核通过才生效（自动生成放行出库移动）
+curl -u qa:qa123 -H 'Content-Type: application/json' -X POST \
+  http://localhost:8080/api/cold-chain/returns/1/decisions -d \
+  '{"decisionType":"RELEASE","reason":"检验合格，放行回合格品库","targetLocation":"合格品库-R1"}'
+curl -u admin:admin123 -H 'Content-Type: application/json' -X POST \
+  http://localhost:8080/api/cold-chain/returns/decisions/1/review -d \
+  '{"approved":true,"reviewNote":"检验记录完整，同意放行"}'
+
+# 导出证据链（登记/移动/检验/双人复核/操作日志一单到底）
+curl -u qa:qa123 -OJ http://localhost:8080/api/cold-chain/returns/1/evidence
+```
+
+### V11 验收
+
+`ReturnIsolationIntegrationTest`（6 个用例，内存 H2 + 真实 Shiro HTTP Basic，Mapper 直查
+物理表）覆盖：三类退货原因分别登记（拒签/温度超限/包装破损）、登记快照固化与原销售批次
+只读（原批次字段与更新时间在退货全流程不变）、关联异常类型匹配校验与超量/非法原因停点；
+入隔离后不能再次出库（非隔离库位移动一律拦截、决定待复核期间库位冻结、唯一出库路径=
+双人复核通过的放行/销毁决定）、每次移动记录库位/人员/时间；检验门控（未检验不能提决定、
+转待查后须重新检验）、双人复核（同一账号自复核拦截、第二账号通过生效、驳回退回已检验可
+再提、历史决定保留）；证据链导出含登记/移动/检验/复核/操作日志全节点且导出留痕；
+运输对象置为无效（撤回）后页面 HTML、列表 CSV 导出、后台 JSON 三者同口径（退货快照不变、
+原批次状态一致展示已作废、退货流程照常推进、台账含退货只读关联块）；以及 401/403/200
+权限校验。全套 57 个用例通过。
