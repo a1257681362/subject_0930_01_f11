@@ -448,4 +448,70 @@ public final class CcConstants {
     public static final String PERM_CARRIER_NOTIFY_RETRY = "coldchain:carrier:notify:retry";
     /** 改期待办确认 */
     public static final String PERM_RESCHEDULE_TODO = "coldchain:reschedule:todo";
+
+    // —— V11 退货批次隔离处理 ——
+    /** 退货单状态：隔离中（入隔离即此态，未开始质检前不得选择处置决定） */
+    public static final String RETURN_QUARANTINED = "QUARANTINED";
+    /** 质检中（QA 已开始检验） */
+    public static final String RETURN_INSPECTING = "INSPECTING";
+    /** 待双人复核（QA 已提交处置决定） */
+    public static final String RETURN_PENDING_REVIEW = "PENDING_REVIEW";
+    /** 已放行（复核通过，退货批次出库） */
+    public static final String RETURN_RELEASED = "RELEASED";
+    /** 已销毁（复核通过，进入销毁区） */
+    public static final String RETURN_DESTROYED = "DESTROYED";
+    /** 已转待查（复核通过进入待查库位；可再次提交新的处置决定） */
+    public static final String RETURN_PENDING_HOLD = "PENDING_HOLD";
+
+    // 标准化退货原因（仅三种；中文名由服务映射，拒绝任何其它代码）
+    /** 收货拒签（与 V6 REJECTION 异常同代码） */
+    public static final String RETURN_REASON_REJECTION = "REJECTION";
+    /** 温度超限（与 V1/V6 TEMP_EXCURSION 异常同代码，直接复用 EXC_TEMP） */
+    // public static final String RETURN_REASON_TEMP = EXC_TEMP; // 值即 "TEMP_EXCURSION"
+    /** 包装破损（退货标准原因；异常事实可为旧 DAMAGE 或 V6 SEAL_BROKEN） */
+    public static final String RETURN_REASON_PACKAGE_DAMAGED = "PACKAGE_DAMAGED";
+    public static final String RETURN_REASON_NAME_REJECTION = "收货拒签";
+    public static final String RETURN_REASON_NAME_TEMP = "温度超限";
+    public static final String RETURN_REASON_NAME_PACKAGE_DAMAGED = "包装破损";
+
+    /** 处置决定：放行 / 销毁 / 转待查 */
+    public static final String RETURN_DECISION_RELEASE = "RELEASE";
+    public static final String RETURN_DECISION_DESTROY = "DESTROY";
+    public static final String RETURN_DECISION_PENDING_HOLD = "PENDING_HOLD";
+
+    /** 库位移动类型：INTAKE 入隔离（系统）/ RELOCATE 区内移位 / FINAL 处置出库（系统） */
+    public static final String RETURN_MOVE_INTAKE = "INTAKE";
+    public static final String RETURN_MOVE_RELOCATE = "RELOCATE";
+    public static final String RETURN_MOVE_FINAL = "FINAL";
+    /** 库区类别：隔离区 / 质检区 / 待查区 / 放行出库 / 销毁区（后三者复用终态字符串） */
+    public static final String RETURN_AREA_QUARANTINE = "QUARANTINE";
+    public static final String RETURN_AREA_INSPECTION = "INSPECTION";
+    public static final String RETURN_AREA_PENDING = "PENDING";
+    // RETURN_RELEASED / RETURN_DESTROYED 同时作为终态库区代码
+
+    // V11 操作日志实体类型
+    public static final String ENT_RETURN_BATCH = "RETURN_BATCH";
+    public static final String ENT_RETURN_MOVE = "RETURN_MOVE";
+    public static final String ENT_RETURN_REVIEW = "RETURN_REVIEW";
+
+    // V11 操作动作
+    public static final String ACT_RETURN_INTAKE = "RETURN_INTAKE";
+    public static final String ACT_RETURN_INSPECT_START = "RETURN_INSPECT_START";
+    public static final String ACT_RETURN_DECISION_SUBMIT = "RETURN_DECISION_SUBMIT";
+    public static final String ACT_RETURN_REVIEW_APPROVE = "RETURN_REVIEW_APPROVE";
+    public static final String ACT_RETURN_REVIEW_REJECT = "RETURN_REVIEW_REJECT";
+    public static final String ACT_RETURN_MOVE = "RETURN_MOVE";
+    public static final String ACT_RETURN_EXPORT = "RETURN_EXPORT";
+
+    // —— V11 Shiro 权限点 ——
+    /** 退货批次隔离台账查看（列表/详情/页面） */
+    public static final String PERM_RETURN_VIEW = "coldchain:return:view";
+    /** 退货登记与隔离库位移动 */
+    public static final String PERM_RETURN_CREATE = "coldchain:return:create";
+    /** 质量检验：开始质检、提交放行/销毁/转待查处置决定 */
+    public static final String PERM_RETURN_INSPECT = "coldchain:return:inspect";
+    /** 处置决定双人复核（同意/驳回；复核人不得是提交人本人，服务层再卡） */
+    public static final String PERM_RETURN_REVIEW = "coldchain:return:review";
+    /** 证据链导出（与页面/后台同口径） */
+    public static final String PERM_RETURN_EXPORT = "coldchain:return:export";
 }

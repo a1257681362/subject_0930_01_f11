@@ -40,11 +40,15 @@ public class ApprovalService {
     private InspectorRegionService regionService;
     @Resource
     private OpLogService opLogService;
+    @Resource
+    private ReturnBatchService returnBatchService;
 
     /** 第一步：发起运输审批申请，停留 PENDING 待处理 */
     @Transactional
     public InspectionApproval apply(ApprovalApplyRequest req) {
         TransportBatch batch = requireBatch(req.getBatchId());
+        // V11：已登记退货入隔离的批次禁止发起新的运输审批推进
+        returnBatchService.requireBatchNotReturned(req.getBatchId());
         if (CcConstants.BATCH_REVOKED.equals(batch.getStatus())) {
             throw new BusinessException("批次已撤回作废，不能发起运输审批: " + batch.getBatchNo());
         }

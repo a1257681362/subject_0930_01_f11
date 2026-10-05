@@ -58,6 +58,8 @@ public class HandoverService {
     private ExceptionLifecycleService exceptionLifecycleService;
     @Resource
     private OpLogService opLogService;
+    @Resource
+    private ReturnBatchService returnBatchService;
 
     // ---------------- 到仓登记 ----------------
 
@@ -201,6 +203,8 @@ public class HandoverService {
         permissionService.requirePermitted(CcConstants.PERM_COLD_CHAIN_HANDOVER);
         HandoverSeal seal = requireSeal(req.getSealId());
         HandoverOrder order = requireOrder(seal.getHandoverId());
+        // V11：批次已登记退货入隔离后，封签核验等交接推进一律冻结（已核验事实保留）
+        returnBatchService.requireBatchNotReturned(order.getBatchId());
         if (CcConstants.HANDOVER_VOIDED.equals(order.getStatus())) {
             throw new BusinessException(String.format(
                     "交接单 %s 已作废，不能再核验其封签（已登记封签事实保留）", order.getHandoverNo()));
@@ -493,6 +497,8 @@ public class HandoverService {
                     batch.getBatchNo(), batch.getStatus()));
         }
         // 允许 SHIPPED / EXCEPTION（曾越限挂起）批次办理交接
+        // V11：已登记退货入隔离的批次禁止到仓/拆单/提交等任何分仓交接推进
+        returnBatchService.requireBatchNotReturned(batchId);
         return batch;
     }
 

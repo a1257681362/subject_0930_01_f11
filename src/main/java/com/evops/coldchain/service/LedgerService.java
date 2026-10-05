@@ -83,6 +83,8 @@ public class LedgerService {
     private com.evops.coldchain.service.LockedPriceService lockedPriceService;
     @Resource
     private com.evops.coldchain.service.BatchRescheduleService rescheduleService;
+    @Resource
+    private ReturnBatchService returnBatchService;
 
     public Map<String, Object> batchLedger(Long batchId) {
         TransportBatch batch = batchMapper.selectById(batchId);
@@ -265,6 +267,15 @@ public class LedgerService {
         }
         deliveryWindow.put("reschedules", rescheduleList);
         ledger.put("deliveryWindow", deliveryWindow);
+
+        // V11 退货批次隔离处理：原销售批次 1:1 只读关联退货单（含库位移动链与双人复核链）；
+        // 即使本批次事后撤回作废，退货单仍按建单快照完整可追
+        Map<String, Object> returnInfo = new LinkedHashMap<>();
+        returnInfo.put("linked", batch.getReturnBatchId() != null);
+        if (batch.getReturnBatchId() != null) {
+            returnInfo.putAll(returnBatchService.detail(batch.getReturnBatchId()));
+        }
+        ledger.put("returnInfo", returnInfo);
 
         ledger.put("opLogs", opLogs);
         return ledger;

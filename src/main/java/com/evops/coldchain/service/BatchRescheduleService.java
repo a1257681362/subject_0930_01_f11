@@ -82,6 +82,8 @@ public class BatchRescheduleService {
     private OpLogService opLogService;
     @Resource
     private ExceptionNotifyTransport notifyTransport;
+    @Resource
+    private ReturnBatchService returnBatchService;
 
     /** 承运通知 webhook：为空=站内留痕必达；配置后非 2xx 记失败、可手动重试 */
     @Value("${coldchain.carrier-notify.endpoint:}")
@@ -93,6 +95,8 @@ public class BatchRescheduleService {
     @Transactional
     public TransportBatch markLoading(Long batchId) {
         TransportBatch batch = requireActiveBatch(batchId);
+        // V11：已登记退货入隔离的批次禁止装车推进
+        returnBatchService.requireBatchNotReturned(batchId);
         if (!CcConstants.BATCH_DISPATCHED.equals(batch.getStatus())) {
             throw new BusinessException(String.format(
                     "仅已派车未装车批次允许装车登记，批次 %s 当前状态=%s", batch.getBatchNo(), batch.getStatus()));
@@ -112,6 +116,8 @@ public class BatchRescheduleService {
     @Transactional
     public BatchReschedule apply(BatchRescheduleRequest req) {
         TransportBatch batch = requireActiveBatch(req.getBatchId());
+        // V11：已登记退货入隔离的批次禁止改期推进
+        returnBatchService.requireBatchNotReturned(req.getBatchId());
         String status = batch.getStatus();
         if (CcConstants.BATCH_SIGNED.equals(status)) {
             throw new BusinessException("批次已签收闭环，送达时窗已完成，不能改期: " + batch.getBatchNo());

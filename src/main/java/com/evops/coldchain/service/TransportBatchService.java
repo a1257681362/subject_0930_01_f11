@@ -91,6 +91,8 @@ public class TransportBatchService {
     private DeliveryWindowService deliveryWindowService;
     @Resource
     private BatchRescheduleService batchRescheduleService;
+    @Resource
+    private ReturnBatchService returnBatchService;
 
     /** 派车：生成稳定批次号，固化档案快照，关联发货单与车辆 */
     @Transactional
@@ -199,6 +201,8 @@ public class TransportBatchService {
     @Transactional
     public TransportBatch ship(Long batchId) {
         TransportBatch batch = requireActiveBatch(batchId);
+        // V11：已登记退货入隔离的原销售批次禁止再发运/出库
+        returnBatchService.requireBatchNotReturned(batchId);
         if (!CcConstants.BATCH_DISPATCHED.equals(batch.getStatus())
                 && !CcConstants.BATCH_LOADING.equals(batch.getStatus())) {
             throw new BusinessException("仅已派车/已装车批次允许发运，当前状态: " + batch.getStatus());
@@ -277,6 +281,8 @@ public class TransportBatchService {
     @Transactional
     public TemperatureLog reportTemperature(TempReportRequest req) {
         TransportBatch batch = requireActiveBatch(req.getBatchId());
+        // V11：退货入隔离后，在途温度数据不再归属原销售批次，禁止继续上报（设备接入同口径进隔离队列）
+        returnBatchService.requireBatchNotReturned(req.getBatchId());
         // 派车后、闭环前（含异常挂起）允许持续上报；已签收/已撤回不可上报
         if (CcConstants.BATCH_SIGNED.equals(batch.getStatus())) {
             throw new BusinessException("批次已签收闭环，不能再上报温度");
@@ -426,6 +432,8 @@ public class TransportBatchService {
     @Transactional
     public ExceptionEvent markException(ExceptionMarkRequest req) {
         TransportBatch batch = requireActiveBatch(req.getBatchId());
+        // V11：退货入隔离后不得再向原销售批次补录异常（已有关联异常的凭证/处置仍可按原链追加闭环）
+        returnBatchService.requireBatchNotReturned(req.getBatchId());
         String type = normalizeType(req.getExceptionType());
         LocalDateTime occurred = req.getOccurredTime() == null ? LocalDateTime.now() : req.getOccurredTime();
         if (exceptionLifecycleService.isGradedType(type)) {
@@ -535,6 +543,8 @@ public class TransportBatchService {
     @Transactional
     public ExceptionEvent reject(BatchRejectRequest req) {
         TransportBatch batch = requireActiveBatch(req.getBatchId());
+        // V11：已登记退货入隔离的批次不得重复登记收货拒签
+        returnBatchService.requireBatchNotReturned(req.getBatchId());
         if (CcConstants.BATCH_SIGNED.equals(batch.getStatus())) {
             throw new BusinessException("批次已签收闭环，不能再登记收货拒签");
         }
@@ -560,6 +570,8 @@ public class TransportBatchService {
     @Transactional
     public TransportBatch settle(BatchSettleRequest req) {
         TransportBatch batch = requireBatch(req.getBatchId());
+        // V11：已登记退货入隔离的批次不得结算
+        returnBatchService.requireBatchNotReturned(req.getBatchId());
         if (!CcConstants.BATCH_SIGNED.equals(batch.getStatus())) {
             throw new BusinessException("仅已签收闭环批次允许结算，当前状态: " + batch.getStatus()
                     + "（收货拒签/异常挂起批次须先关闭异常并完成签收）");
@@ -589,6 +601,8 @@ public class TransportBatchService {
     @Transactional
     public TransportBatch sign(SignRequest req) {
         TransportBatch batch = requireActiveBatch(req.getBatchId());
+        // V11：已登记退货入隔离的批次不得签收闭环
+        returnBatchService.requireBatchNotReturned(req.getBatchId());
         if (CcConstants.BATCH_SIGNED.equals(batch.getStatus())) {
             throw new BusinessException("批次已签收，不能重复签收");
         }

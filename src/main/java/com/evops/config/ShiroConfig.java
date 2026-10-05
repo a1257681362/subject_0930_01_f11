@@ -238,6 +238,34 @@ public class ShiroConfig {
         chain.addPathDefinition("/api/cold-chain/reschedules/**",
                 "authcBasic, perms[" + com.evops.coldchain.CcConstants.PERM_WINDOW_VIEW + "]");
 
+        // —— V11 退货批次隔离处理（具体写路径在前，宽泛只读在后）——
+        // 证据链导出：独立导出权限（与页面/后台同口径）
+        chain.addPathDefinition("/api/cold-chain/returns/export",
+                "authcBasic, perms[" + com.evops.coldchain.CcConstants.PERM_RETURN_EXPORT + "]");
+        // 待双人复核队列
+        chain.addPathDefinition("/api/cold-chain/returns/pending-review",
+                "authcBasic, perms[" + com.evops.coldchain.CcConstants.PERM_RETURN_REVIEW + "]");
+        // QA 开始检验 / 提交处置决定
+        chain.addPathDefinition("/api/cold-chain/returns/*/inspect",
+                "authcBasic, perms[" + com.evops.coldchain.CcConstants.PERM_RETURN_INSPECT + "]");
+        chain.addPathDefinition("/api/cold-chain/returns/*/decisions",
+                "authcBasic, perms[" + com.evops.coldchain.CcConstants.PERM_RETURN_INSPECT + "]");
+        // 第二账号双人复核（提交人≠复核人在服务层再卡）
+        chain.addPathDefinition("/api/cold-chain/returns/*/review",
+                "authcBasic, perms[" + com.evops.coldchain.CcConstants.PERM_RETURN_REVIEW + "]");
+        // 隔离/质检区内库位移动
+        chain.addPathDefinition("/api/cold-chain/returns/*/moves",
+                "authcBasic, perms[" + com.evops.coldchain.CcConstants.PERM_RETURN_CREATE + "]");
+        // 退货登记 POST 与列表 GET 同路径：先过查看权限，建单在服务内二次校验 create
+        chain.addPathDefinition("/api/cold-chain/returns",
+                "authcBasic, perms[" + com.evops.coldchain.CcConstants.PERM_RETURN_VIEW + "]");
+        // 退货详情/按原批次反查等只读（必须放在精确路径之后）
+        chain.addPathDefinition("/api/cold-chain/returns/**",
+                "authcBasic, perms[" + com.evops.coldchain.CcConstants.PERM_RETURN_VIEW + "]");
+        // 退货隔离处理页面同样需要查看权限（页面内各动作再经上面 API 权限点二次校验）
+        chain.addPathDefinition("/ui/cold-chain/returns",
+                "authcBasic, perms[" + com.evops.coldchain.CcConstants.PERM_RETURN_VIEW + "]");
+
         // 冷链台账接口与管理页面使用 HTTP Basic，便于 curl/联调；浏览器会弹出登录框
         chain.addPathDefinition("/api/**", "authcBasic");
         chain.addPathDefinition("/ui/**", "authcBasic");

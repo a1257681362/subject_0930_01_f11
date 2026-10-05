@@ -933,3 +933,101 @@ Mapper/服务直查物理表）覆盖：工作日区间版本化（草稿重叠�
 快照与责任人、承运通知对象、调度/承运/收货待办责任人逐一列出；webhook 失败留痕不回滚、
 重试 attemptNo 递增；待办确认只进不退；签收=送达时窗完成后禁止改期；台账聚合改期历史）；
 权限（401/403/200：时窗维护、装车、改期申请、改期审批分级授权）。全套 51 个用例通过。
+
+## 冷链运输 V11：退货批次隔离处理
+
+在 V1~V10 冷链台账上承接**冷链药品退货**：在途销售批次被收货方退回时按三种标准原因登记退货，
+退货批次直入隔离库位锁定，质量人员完成检验后选择处置，处置决定双人复核才生效，
+全程库位移动留痕，原销售批次保持只读关联，证据链可导出。
+
+### 核心规则
+
+- **三种标准退货原因**：`REJECTION` 收货拒签 / `TEMP_EXCURSION` 温度超限 / `PACKAGE_DAMAGED`
+  包装破损，拒绝任何其它代码；可选择引用一张属于同一原批次、类型相容的既有异常单
+  （包装破损可引用旧 `DAMAGE` 或 V6 `SEAL_BROKEN`）。支持部分退货（`0 < 退货数量 <= 发运数量`）。
+- **仅在途批次可退、1:1 唯一**：只有 `SHIPPED/EXCEPTION` 原销售批次可登记退货；退货单与原批次
+  数据库层 1:1 唯一（`uk_cc_return_batch`），一个销售批次只能退货一次。
+- **入隔离即锁定、快照脱钩**：建单即固化原批次号/发货单号/批准文号/温区/包装规格/收货机构/
+  发运数量快照，并在 `t_cc_transport_batch.return_batch_id` 写入只读关联锁（只写一次，永不清空、
+  永不改向）；原批次状态、温度留痕、异常/凭证行一律不改动。同时生成首条 `INTAKE` 移动
+  （在途车辆直入隔离库位，记录库位/人员/时间）。
+- **隔离后不能再次出库**：原批次一旦锁定，发运/装车/温度上报/异常补录/收货拒签/签收/结算/
+  改期/分仓交接（到仓·拆单·提交）/运输审批申请全部被统一卡口拦截；V9 车载设备数据同口径
+  进入设备隔离队列（`BATCH_INVALID`）。退货侧处理过程中仅允许隔离区/质检区内 `RELOCATE`，
+  待复核期间移动冻结；放行出库/销毁区/待查库位三类**终态移动只能由复核通过后系统生成
+  `FINAL` 行**，不存在任何手工终态出库路径。
+- **质量人员检验后才能处置**：`QUARANTINED` → QA 开始检验 → `INSPECTING` → QA 提交
+  `RELEASE` 放行 / `DESTROY` 销毁 / `PENDING_HOLD` 转待查（含质检报告、实测温度、处置依据、
+  目标库位）→ `PENDING_REVIEW`。未开始检验不得提交决定。
+- **处理决定双人复核**：复核人必须是不同于决定提交人的第二个登录账号（提交人本人复核直接
+  拦截）；同意按决定落终态并系统生成 FINAL 移动，驳回退回 `INSPECTING` 重新处置（决策快照与
+  历史意见保留不覆盖、不产生移动）；`PENDING_HOLD` 后允许再次提交新决定。每轮提交/复核在
+  `t_cc_return_decision_review` 追加不可变流水。
+- **每次移动记录库位、人员和时间**：`t_cc_return_location_move` 只追加，移动序号在退货单内
+  连续、前后库位首尾相接。
+- **原销售批次保持只读关联且可置无效**：退货成立后仍允许把原运输对象撤回作废（`REVOKED`，
+  复用 V1 撤回口径，原始行全部保留）；退货单靠建单快照在**页面、导出、后台三处同口径**
+  展示，原点状态如实标注为"已撤回作废（只读关联）"，不隐藏、不丢字段。
+- **证据链导出**：CSV（UTF-8 BOM）按退货单分段输出 退货抬头/库位移动/复核流水；
+  列表 API、管理页面、导出共用 `ReturnBatchService.searchReturns` 同一查询方法（同过滤、
+  同行集、同字段），逐次导出写 `t_cc_op_log` 审计流水。退货单、移动、复核全部关键动作写
+  操作日志并带原批次 `batch_id`，原批次台账新增 `returnInfo` 聚合段串联全程。
+
+### 表结构增量（详见 schema.sql，版本标记 `cold-chain-11`）
+
+- 新增 `t_cc_return_batch`（退货主单：原批次快照、标准原因、状态机、当前库位、质检报告、
+  决定/复核字段）、`t_cc_return_location_move`（库位移动只追加）、
+  `t_cc_return_decision_review`（双人复核流水只追加）、序列 `seq_cc_return_no`
+  （起始 150000001，单号 `TH`+8 位）。
+- `t_cc_transport_batch` 增 `return_batch_id`（退货只读关联锁）。
+
+### 接口增量（仍在 `/api/cold-chain` 下，HTTP Basic）
+
+| 动作 | 方法与路径 | 权限点 |
+| --- | --- | --- |
+| 退货登记（在途批次直入隔离库位） | `POST /returns` | `coldchain:return:create`（过滤链先验 view，服务内二次校验） |
+| QA 开始质量检验 | `POST /returns/{id}/inspect` | `coldchain:return:inspect` |
+| 提交处置决定（放行/销毁/转待查） | `POST /returns/{id}/decisions` | `coldchain:return:inspect` |
+| 双人复核（同意/驳回） | `POST /returns/{id}/review` | `coldchain:return:review`（提交人≠复核人服务层再卡） |
+| 隔离/质检区内库位移动 | `POST /returns/{id}/moves` | `coldchain:return:create` |
+| 退货列表（状态/原因过滤） | `GET /returns` | `coldchain:return:view` |
+| 待双人复核队列 | `GET /returns/pending-review` | `coldchain:return:review` |
+| 退货详情（移动链+复核链+只读原批次） | `GET /returns/{id}` | `coldchain:return:view` |
+| 按原销售批次反查退货单 | `GET /returns/batch/{batchId}` | `coldchain:return:view` |
+| 证据链 CSV 导出 | `GET /returns/export` | `coldchain:return:export` |
+| 管理页面 | `GET /ui/cold-chain/returns` | `coldchain:return:view` |
+
+授权：`receiver`/`dispatcher` 可登记退货、查看、导出；`qa` 质量检验、提交决定、参与复核；
+`admin`（持全部权限点）作为第二账号双人复核；`carrier`/`inspector` 只读查看。
+
+示例：
+
+```bash
+# 收货岗登记温度超限部分退货，直入隔离库位
+curl -u receiver:receiver123 -H 'Content-Type: application/json' -X POST \
+  http://localhost:8080/api/cold-chain/returns \
+  -d '{"batchId":1,"reasonType":"TEMP_EXCURSION","returnQty":12,"quarantineLocation":"隔离库-A-01","reasonDetail":"途中持续越限"}'
+
+# QA 开始检验并提交放行决定
+curl -u qa:qa123 -X POST http://localhost:8080/api/cold-chain/returns/1/inspect
+curl -u qa:qa123 -H 'Content-Type: application/json' -X POST \
+  http://localhost:8080/api/cold-chain/returns/1/decisions \
+  -d '{"decision":"RELEASE","targetLocation":"合格出库区-A","decisionNote":"复检合格","inspectReport":"逐盒核对温区记录","measuredTemp":6.21}'
+
+# 第二账号（不能是 qa 本人）复核同意，系统生成放行 FINAL 移动
+curl -u admin:admin123 -H 'Content-Type: application/json' -X POST \
+  http://localhost:8080/api/cold-chain/returns/1/review \
+  -d '{"approved":true,"reviewNote":"复核温度证据与检验记录，同意放行"}'
+```
+
+### V11 验收
+
+`ReturnBatchQuarantineIntegrationTest`（8 个用例，内存 H2 + 真实 Shiro HTTP Basic，
+Mapper 直查物理表）覆盖：三种标准原因登记（中文名/原因过滤、相容异常校验、部分退货）；
+入隔离首条 INTAKE 移动与 1:1 只读锁（原批次状态/数量等原始行不变）；
+全链路 QA 检验→放行→双人复核（本人复核被业务拦截、跨角色 403）；
+销毁决定驳回重处（无 FINAL 移动）、转待查后再次提交决定（两轮 FINAL/复核流水保留）；
+隔离后原批次十类推进/出库入口（装车/温度/异常/拒签/签收/结算/改期/到仓/拆单/审批）
+统一拦截；登记停点（未发运/数量/非法原因/异常不相容/重复退货）；
+原批次撤回作废后列表/过滤/详情/页面/CSV 导出/批次台账六处仍同口径可查、快照不丢；
+移动序号连续首尾相接、终态移动只能系统生成；操作日志与导出审计留痕。

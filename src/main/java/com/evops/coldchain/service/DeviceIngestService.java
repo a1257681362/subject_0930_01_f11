@@ -111,6 +111,11 @@ public class DeviceIngestService {
             return quarantine(req, payloadHash, CcConstants.REASON_BATCH_INVALID,
                     "批次已签收闭环，不能接收设备数据: " + batch.getBatchNo());
         }
+        // V11：原销售批次已登记退货入隔离，设备数据不再归属在途销售批次，与手工温度上报同口径进隔离队列
+        if (batch.getReturnBatchId() != null) {
+            return quarantine(req, payloadHash, CcConstants.REASON_BATCH_INVALID,
+                    "批次已登记退货入隔离，不能接收设备数据: " + batch.getBatchNo());
+        }
 
         // 5) 登记数据批次（占幂等键）
         DeviceIngestBatch ingestBatch = new DeviceIngestBatch();

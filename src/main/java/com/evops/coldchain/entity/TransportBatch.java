@@ -98,6 +98,9 @@ public class TransportBatch extends BaseEntity {
     /** 承诺时间解析时参与的节假日/临时闭馆规则ID，逗号分隔（旧结论可追，规则事后冻结） */
     private String windowHolidayIdsSnap;
 
+    // —— V11 退货只读关联锁：退货建单写入一次，永不清空/不改向；批次状态/温度/异常行均不动 ——
+    private Long returnBatchId;
+
     public String getBatchNo() { return batchNo; }
     public void setBatchNo(String batchNo) { this.batchNo = batchNo; }
     public Long getOrderId() { return orderId; }
@@ -208,4 +211,8 @@ public class TransportBatch extends BaseEntity {
     public void setWindowRuleVersionNo(Integer windowRuleVersionNo) { this.windowRuleVersionNo = windowRuleVersionNo; }
     public String getWindowHolidayIdsSnap() { return windowHolidayIdsSnap; }
     public void setWindowHolidayIdsSnap(String windowHolidayIdsSnap) { this.windowHolidayIdsSnap = windowHolidayIdsSnap; }
+
+    // —— V11：退货只读关联锁 ——
+    public Long getReturnBatchId() { return returnBatchId; }
+    public void setReturnBatchId(Long returnBatchId) { this.returnBatchId = returnBatchId; }
 }
